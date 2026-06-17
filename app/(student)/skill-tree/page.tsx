@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Icon } from "@/app/(shared)/icons";
+import { COLOR_MAP } from "@/app/(shared)/primitives";
 import { StudentFooter } from "@/app/(shared)/chrome";
 import { api, type CourseNode, type PrereqGraph, type LearningPath, ApiError } from "@/core/api";
 
@@ -85,8 +86,15 @@ function layoutGraph(graph: PrereqGraph): Layout {
   return { placed, width, height };
 }
 
-const nodeColor = (node: CourseNode) => node.color || "var(--ink-3)";
+// The backend returns `color` as a named palette key ("green" | "blue" |
+// "amber" | "plum" | "rose"), the same scheme as CourseSummary — NOT a raw CSS
+// color. Resolve it through COLOR_MAP; fall back to the raw value if it's
+// already a valid CSS color (defensive), then to the neutral ink shade.
+const nodeColor = (node: CourseNode) => COLOR_MAP[node.color]?.solid ?? (node.color || "var(--ink-3)");
 const truncate = (s: string, n = 18) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
+// Glyphs vary from a single character ("△") to short strings ("sinθ", "A→");
+// shrink the font so multi-character glyphs stay inside the node circle.
+const glyphSize = (glyph: string) => (glyph.length <= 1 ? 20 : glyph.length <= 2 ? 16 : 12);
 
 const PathPanel = ({
   target, path, loading, error, onClose,
@@ -228,7 +236,7 @@ export default function SkillTreePage() {
                     <circle cx={x} cy={y} r={NODE_R} fill={color} fillOpacity={inPath || isSelected ? 0.18 : 0.1}
                             stroke={color} strokeWidth={isSelected ? 3.5 : inPath ? 2.5 : 1.5}/>
                     <text x={x} y={y} textAnchor="middle" dominantBaseline="central"
-                          fontFamily="Fraunces, serif" fontSize={20} fontWeight={600} fill={color}>
+                          fontFamily="Fraunces, serif" fontSize={glyphSize(node.glyph || node.title.slice(0, 1))} fontWeight={600} fill={color}>
                       {node.glyph || node.title.slice(0, 1).toUpperCase()}
                     </text>
                     <text x={x} y={y + NODE_R + 14} textAnchor="middle" fontSize={11} fontWeight={700} fill="var(--ink)">

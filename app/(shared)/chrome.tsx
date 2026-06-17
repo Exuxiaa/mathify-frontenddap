@@ -52,7 +52,16 @@ const ProfilePopover = ({ onClose }: { onClose: () => void }) => {
         <Avatar letter={student.initial || "S"} color="var(--green)" size={40}/>
         <div>
           <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: "-0.01em" }}>{student.name || "Student"}</div>
-          <span className="mono" style={{ fontSize: 11, padding: "2px 7px", borderRadius: 6, background: "var(--green-soft)", color: "var(--green-deep)", fontWeight: 700 }}>L{student.level || 1}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+            <span className="mono" style={{ fontSize: 11, padding: "2px 7px", borderRadius: 6, background: "var(--green-soft)", color: "var(--green-deep)", fontWeight: 700 }}>L{student.level || 1}</span>
+            {student.premium ? (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, padding: "2px 8px", borderRadius: 999, background: "var(--amber-soft)", color: "var(--amber-deep)", fontWeight: 700, letterSpacing: "0.04em" }}>
+                <Icon.Sparkle style={{ width: 11, height: 11 }}/> PREMIUM
+              </span>
+            ) : (
+              <Link href="/plans" style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: "var(--bg-2)", color: "var(--ink-2)", fontWeight: 700, letterSpacing: "0.04em" }}>FREE · Upgrade</Link>
+            )}
+          </div>
         </div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, padding: "0 12px 14px" }}>

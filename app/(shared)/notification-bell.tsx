@@ -4,20 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/app/(shared)/icons";
 import { timeAgo } from "@/app/(shared)/format";
+import { api, type Notification as NotificationItem } from "@/core/api";
 
-// There is no notifications endpoint in the API yet; the bell fetches best-effort
-// and simply stays empty if the feed 404s/fails (matches the old behaviour).
-interface NotificationItem {
-  id: string;
-  icon?: string;
-  title: string;
-  body?: string;
-  createdAt?: string;
-  read?: boolean;
-  link?: string;
-}
-
-const NOTIFICATIONS_URL = (process.env.NEXT_PUBLIC_API_BASE || "/api") + "/notifications";
+// Wired to the proposed GET /api/me/notifications feed (see api.ts). The bell
+// fetches best-effort and simply stays empty if the feed 404s/fails (no
+// endpoint / no session yet), so it never blocks the chrome.
 
 export function NotificationBell() {
   const ref = useRef<HTMLDivElement>(null);
@@ -29,11 +20,8 @@ export function NotificationBell() {
 
   useEffect(() => {
     let alive = true;
-    fetch(NOTIFICATIONS_URL, { credentials: "include", headers: { Accept: "application/json" } })
-      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
-      .then((data: { items?: NotificationItem[]; unread?: number }) => {
-        if (alive) { setItems(data.items || []); setUnread(data.unread || 0); }
-      })
+    api.getNotifications()
+      .then((data) => { if (alive) { setItems(data.items || []); setUnread(data.unread || 0); } })
       .catch(() => {}) // bell just stays empty if the feed fails
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
@@ -45,26 +33,18 @@ export function NotificationBell() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const post = (body: Record<string, string>) =>
-    fetch(NOTIFICATIONS_URL, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams(body).toString(),
-    }).catch(() => {});
-
   const markAllRead = () => {
     if (unread === 0) return;
     setUnread(0);
     setItems((prev) => prev.map((n) => ({ ...n, read: true })));
-    post({ action: "markAllRead" });
+    api.markAllNotificationsRead().catch(() => {});
   };
 
   const onItemClick = (n: NotificationItem) => {
     if (!n.read) {
       setUnread((u) => Math.max(0, u - 1));
       setItems((prev) => prev.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
-      post({ action: "markRead", id: n.id });
+      api.markNotificationRead(n.id).catch(() => {});
     }
     if (n.link) router.push(n.link);
   };

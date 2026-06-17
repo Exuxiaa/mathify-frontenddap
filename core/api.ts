@@ -39,11 +39,19 @@ export interface CourseDetail {
 
 export type QuizQuestionType = "MULTIPLE_CHOICE" | (string & {});
 
+/** A selectable answer choice. Correctness is never exposed before grading. */
+export interface QuizOption {
+  id: string;
+  text: string;
+}
+
 export interface QuizQuestion {
   questionId: string;
   prompt: string;
   points: number;
   type: QuizQuestionType;
+  /** Answer choices. Absent until the backend exposes them (PROPOSED). */
+  options?: QuizOption[];
 }
 
 export interface Quiz {
@@ -53,10 +61,37 @@ export interface Quiz {
   questions: QuizQuestion[];
 }
 
+// ── Quiz grading (proposed POST /api/quizzes/{id}/attempts) ─────────────────
+export interface QuizAnswer {
+  questionId: string;
+  optionId: string;
+}
+
+export interface QuizQuestionResult {
+  questionId: string;
+  correct: boolean;
+  earnedPoints: number;
+  /** The right choice, so the UI can show it after grading. Optional. */
+  correctOptionId?: string;
+}
+
+export interface QuizAttemptResult {
+  /** Points earned. */
+  score: number;
+  totalPoints: number;
+  correctCount: number;
+  questionCount: number;
+  passed: boolean;
+  passingScore: number;
+  results: QuizQuestionResult[];
+}
+
 export interface LoginResponse {
   role: Role;
   message: string;
 }
+
+export type PlanId = "FREE" | "MONTHLY" | "ANNUAL" | (string & {});
 
 /** Current user's profile + progress, reshaped by the backend MeResource. */
 export interface Me {
@@ -65,6 +100,94 @@ export interface Me {
   streak: number;
   xp: number;
   level: number;
+  /** Billing plan the student is on. Treated as "FREE" when the backend omits it. */
+  plan?: PlanId;
+  /** Convenience flag: true for any paid plan. Defaults to false when omitted. */
+  premium?: boolean;
+  /** ISO-8601 renewal/expiry for paid plans; null or omitted on FREE. */
+  planRenewsAt?: string | null;
+}
+
+// ── Dashboard (proposed GET /api/me/dashboard) ──────────────────────────────
+// Single aggregate feed backing the Today page. Every section is optional-by-
+// fallback on the client, so the page degrades gracefully until the backend
+// ships this endpoint.
+
+export type StepType = "LESSON" | "PRACTICE" | "VIDEO" | "QUIZ" | (string & {});
+
+/** The "pick up where you left off" lesson; null when nothing is in progress. */
+export interface ContinueLearning {
+  courseId: string;
+  courseTitle: string;
+  track: string;
+  level: number;
+  chapterId: string;
+  chapterTitle: string;
+  lessonId: string;
+  lessonTitle: string;
+  lessonDescription: string;
+  /** 1-based position of the current step within the lesson. */
+  stepIndex: number;
+  stepCount: number;
+  progressPercent: number;
+  xpReward: number;
+  estimatedMinutes: number;
+  pausedAt: string | null;
+}
+
+export interface UpNextStep {
+  id: string;
+  type: StepType;
+  title: string;
+  /** Pre-formatted secondary line, e.g. "8 problems · 12 XP". */
+  meta: string;
+  xp: number;
+}
+
+export interface DashboardQuest {
+  id: string;
+  scope: "DAILY" | "WEEKLY" | (string & {});
+  title: string;
+  description: string;
+  progress: number;
+  total: number;
+  reward: string;
+  /** Palette key (green|blue|amber|plum|rose); optional. */
+  color?: string;
+}
+
+export interface DashboardAchievement {
+  id: string;
+  name: string;
+  description: string;
+  /** Humanized or ISO-8601 timestamp the badge was earned. */
+  earnedAt: string;
+  color?: string;
+  glyph?: string;
+}
+
+export interface UpcomingAchievement {
+  id: string;
+  name: string;
+  requirement: string;
+}
+
+export interface Dashboard {
+  /** Daily XP goal ring. */
+  goal: { targetXp: number; earnedXp: number };
+  continueLearning: ContinueLearning | null;
+  upNext: UpNextStep[];
+  /** `history` = activity intensity (0..N) per day, oldest→newest. */
+  streak: { current: number; history: number[] };
+  /** `days` = XP earned per weekday (7 values), `deltaPercent` vs last week. */
+  weeklyXp: { days: number[]; total: number; deltaPercent: number };
+  hearts: { current: number; max: number };
+  quests: DashboardQuest[];
+  achievements: {
+    earnedCount: number;
+    recent: DashboardAchievement[];
+    upcoming: UpcomingAchievement[];
+  };
 }
 
 export type EnrollmentStatus = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED" | (string & {});
@@ -85,9 +208,13 @@ export interface CourseNode {
   title: string;
   track: string;
   levelNum: number;
-  /** Raw CSS color (e.g. "#1f8a5b"); "" when the backend has none. */
+  /**
+   * Named palette key — "green" | "blue" | "amber" | "plum" | "rose" — the same
+   * scheme as CourseSummary.color (resolve through COLOR_MAP, not as raw CSS).
+   * May be "" when the backend has none.
+   */
   color: string;
-  /** Display glyph; "" when null. */
+  /** Display glyph (e.g. "△", "sinθ"); "" when null. */
   glyph: string;
 }
 
@@ -107,6 +234,54 @@ export interface PrereqGraph {
 export interface LearningPath {
   target: string;
   path: CourseNode[];
+}
+
+// ── Chapter lessons (proposed GET /api/chapters/{chapterId}/lessons) ────────
+export type LessonType = "READING" | "VIDEO" | "PRACTICE" | "QUIZ" | (string & {});
+export type ProgressStatus = "LOCKED" | "AVAILABLE" | "IN_PROGRESS" | "COMPLETED" | (string & {});
+
+export interface ChapterLesson {
+  id: string;
+  title: string;
+  type: LessonType;
+  estimatedMinutes: number;
+  xpReward: number;
+  status: ProgressStatus;
+}
+
+export interface ChapterContent {
+  chapterId: string;
+  title: string;
+  lessons: ChapterLesson[];
+  /** Id of the end-of-chapter quiz, or null. */
+  quizId: string | null;
+}
+
+// ── Notifications (proposed GET /api/me/notifications) ──────────────────────
+export interface Notification {
+  id: string;
+  title: string;
+  body?: string;
+  /** Icon key (matches the shared Icon set), e.g. "Flame", "Trophy". */
+  icon?: string;
+  /** In-app destination to open on click. */
+  link?: string;
+  read: boolean;
+  createdAt?: string;
+}
+
+export interface NotificationFeed {
+  items: Notification[];
+  unread: number;
+}
+
+// ── Billing checkout (proposed POST /api/billing/checkout) ──────────────────
+export interface CheckoutSession {
+  /** URL to redirect the browser to (Midtrans Snap redirect / payment page). */
+  redirectUrl: string;
+  /** Midtrans Snap token, when using the embedded Snap flow. */
+  token?: string;
+  orderId?: string;
 }
 
 export interface ApiErrorBody {
@@ -158,6 +333,8 @@ export const api = {
   logout: () => request<{ message: string }>("/auth/logout", { method: "POST" }),
   /** Current user's profile + progress (requires a session). */
   getMe: () => request<Me>("/me"),
+  /** Aggregate Today-page feed (requires a session). Proposed endpoint. */
+  getDashboard: () => request<Dashboard>("/me/dashboard"),
   listCourses: () => request<CourseSummary[]>("/courses"),
   /** The current student's enrollments with per-course progress. */
   listEnrollments: () => request<Enrollment[]>("/students/me/enrollments"),
@@ -168,4 +345,27 @@ export const api = {
   getLearningPath: (courseId: string) =>
     request<LearningPath>(`/courses/paths?courseId=${encodeURIComponent(courseId)}`),
   getQuiz: (id: string) => request<Quiz>(`/quizzes/${encodeURIComponent(id)}`),
+  /** Submit answers for grading (PROPOSED). */
+  submitQuiz: (id: string, answers: QuizAnswer[]) =>
+    request<QuizAttemptResult>(`/quizzes/${encodeURIComponent(id)}/attempts`, {
+      method: "POST",
+      body: JSON.stringify({ answers }),
+    }),
+  /** Lessons within a chapter (PROPOSED). */
+  getChapterLessons: (chapterId: string) =>
+    request<ChapterContent>(`/chapters/${encodeURIComponent(chapterId)}/lessons`),
+  /** Enroll the current student in a course (PROPOSED). Returns the enrollment. */
+  enroll: (courseId: string) =>
+    request<Enrollment>(`/courses/${encodeURIComponent(courseId)}/enroll`, { method: "POST" }),
+  /** Notification feed for the current student (PROPOSED). */
+  getNotifications: () => request<NotificationFeed>("/me/notifications"),
+  markNotificationRead: (id: string) =>
+    request<void>(`/me/notifications/${encodeURIComponent(id)}/read`, { method: "POST" }),
+  markAllNotificationsRead: () => request<void>("/me/notifications/read-all", { method: "POST" }),
+  /** Start a Midtrans checkout for a paid plan (PROPOSED). */
+  createCheckout: (planId: string) =>
+    request<CheckoutSession>("/billing/checkout", {
+      method: "POST",
+      body: JSON.stringify({ planId }),
+    }),
 };

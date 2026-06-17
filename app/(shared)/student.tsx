@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { api } from "@/core/api";
+import { api, type PlanId } from "@/core/api";
 
 // Student profile context, formerly injected by the JSP shell as
 // window.STUDENT_CONTEXT. Now backed by the real GET /api/me endpoint
@@ -14,9 +14,12 @@ export interface Student {
   streak: number;
   xp: number;
   level: number;
+  plan: PlanId;
+  premium: boolean;
+  planRenewsAt: string | null;
 }
 
-export const DEFAULT_STUDENT: Student = { name: "Student", initial: "S", streak: 0, xp: 0, level: 1 };
+export const DEFAULT_STUDENT: Student = { name: "Student", initial: "S", streak: 0, xp: 0, level: 1, plan: "FREE", premium: false, planRenewsAt: null };
 
 const StudentContext = createContext<Student>(DEFAULT_STUDENT);
 
@@ -29,7 +32,13 @@ export function StudentProvider({ value, children }: { value?: Partial<Student>;
     if (value) return; // explicit value wins — don't fetch
     let alive = true;
     api.getMe()
-      .then((me) => { if (alive) setStudent({ ...DEFAULT_STUDENT, ...me }); })
+      .then((me) => {
+        if (!alive) return;
+        const plan = me.plan ?? DEFAULT_STUDENT.plan;
+        // Derive premium from the plan when the backend doesn't send the flag.
+        const premium = me.premium ?? plan !== "FREE";
+        setStudent({ ...DEFAULT_STUDENT, ...me, plan, premium });
+      })
       .catch(() => { /* no session / not ready — keep defaults */ });
     return () => { alive = false; };
   }, [value]);

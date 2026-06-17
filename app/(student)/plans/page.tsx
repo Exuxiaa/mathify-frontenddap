@@ -3,12 +3,12 @@
 import type { SVGProps } from "react";
 import { Icon } from "@/app/(shared)/icons";
 import { notify } from "@/app/(shared)/toast";
+import { useStudent } from "@/app/(shared)/student";
+import { api, type PlanId, ApiError } from "@/core/api";
 
-// Plans / upgrade page. The backend has no billing or plan-status endpoint yet,
-// so plan status defaults to the free/sandbox view and the checkout CTAs surface
-// a toast instead of hitting a (non-existent) checkout route.
-const CURRENT_PLAN = "FREE";
-const IS_PREMIUM = false;
+// Plans / upgrade page. Current plan + premium status now come from the student
+// context (GET /api/me → plan/premium). Checkout itself still has no backend
+// route, so the CTAs surface a toast pending the Midtrans checkout endpoint.
 const IS_PRODUCTION = false;
 
 const Crown = (p: SVGProps<SVGSVGElement>) => (
@@ -81,8 +81,8 @@ const PLANS: Plan[] = [
   },
 ];
 
-const PlanCard = ({ plan }: { plan: Plan }) => {
-  const isCurrent = CURRENT_PLAN === plan.id;
+const PlanCard = ({ plan, currentPlan }: { plan: Plan; currentPlan: PlanId }) => {
+  const isCurrent = currentPlan === plan.id;
   return (
     <div style={{
       position: "relative", background: "var(--paper)",
@@ -117,7 +117,15 @@ const PlanCard = ({ plan }: { plan: Plan }) => {
         isCurrent ? (
           <div style={{ padding: "11px 20px", borderRadius: 12, background: plan.accentBg, color: plan.accent, fontWeight: 700, fontSize: 14, textAlign: "center", marginBottom: 24 }}>Active plan</div>
         ) : (
-          <button onClick={() => notify(`Checkout for ${plan.label} is coming soon`)}
+          <button onClick={async () => {
+              try {
+                const { redirectUrl } = await api.createCheckout(plan.id);
+                window.location.href = redirectUrl;
+              } catch (e) {
+                // No checkout endpoint yet (or not signed in) — keep the placeholder UX.
+                notify(e instanceof ApiError && e.status === 401 ? "Please sign in to upgrade" : `Checkout for ${plan.label} is coming soon`);
+              }
+            }}
              style={{ display: "block", width: "100%", padding: "11px 20px", borderRadius: 12, background: plan.accent, color: "white", fontWeight: 700, fontSize: 14, textAlign: "center", border: "none", cursor: "pointer", fontFamily: "inherit", boxShadow: `0 2px 0 color-mix(in srgb, ${plan.accent} 70%, black)`, marginBottom: 24 }}>
             Get {plan.label} →
           </button>
@@ -145,6 +153,9 @@ const PlanCard = ({ plan }: { plan: Plan }) => {
 };
 
 export default function PlansPage() {
+  const student = useStudent();
+  const currentPlan = student.plan || "FREE";
+  const isPremium = student.premium;
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
       {!IS_PRODUCTION && (
@@ -159,9 +170,9 @@ export default function PlansPage() {
         <span className="serif" style={{ position: "absolute", left: "5%", top: 20, fontSize: 120, color: "var(--amber)", opacity: 0.08, fontWeight: 600, pointerEvents: "none" }}>∑</span>
         <span className="serif" style={{ position: "absolute", right: "8%", top: 40, fontSize: 90, color: "var(--green)", opacity: 0.08, fontWeight: 600, pointerEvents: "none" }}>π</span>
 
-        {IS_PREMIUM ? (
+        {isPremium ? (
           <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "5px 14px", borderRadius: 999, background: "var(--amber-soft)", color: "var(--amber-deep)", fontWeight: 700, fontSize: 13, marginBottom: 18 }}>
-            <Crown/> You&rsquo;re on Premium · {CURRENT_PLAN}
+            <Crown/> You&rsquo;re on Premium · {currentPlan}
           </div>
         ) : (
           <div style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "5px 14px", borderRadius: 999, background: "var(--green-soft)", color: "var(--green-deep)", fontWeight: 700, fontSize: 13, marginBottom: 18 }}>
@@ -170,11 +181,11 @@ export default function PlansPage() {
         )}
 
         <h1 style={{ margin: "0 0 16px", fontSize: "clamp(32px, 5vw, 54px)", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.05 }}>
-          {IS_PREMIUM ? "Manage your plan" : "Go"}{" "}
-          <span className="serif" style={{ color: "var(--green-deep)", fontWeight: 500 }}>{IS_PREMIUM ? "" : "Premium"}</span>
+          {isPremium ? "Manage your plan" : "Go"}{" "}
+          <span className="serif" style={{ color: "var(--green-deep)", fontWeight: 500 }}>{isPremium ? "" : "Premium"}</span>
         </h1>
         <p style={{ margin: "0 auto", fontSize: 17, color: "var(--ink-3)", maxWidth: 520, lineHeight: 1.6 }}>
-          {IS_PREMIUM
+          {isPremium
             ? "You already have full access. Your subscription details are shown below."
             : "Unlock every course, earn certificates, and accelerate your math journey. No hidden fees."}
         </p>
@@ -182,7 +193,7 @@ export default function PlansPage() {
 
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "0 24px 80px" }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 20, alignItems: "start" }}>
-          {PLANS.map((plan) => <PlanCard key={plan.id} plan={plan}/>)}
+          {PLANS.map((plan) => <PlanCard key={plan.id} plan={plan} currentPlan={currentPlan}/>)}
         </div>
         <div style={{ marginTop: 40, textAlign: "center", color: "var(--ink-3)", fontSize: 13, lineHeight: 1.7 }}>
           <p style={{ margin: "0 0 6px" }}>All payments are processed securely via Midtrans. Prices in Indonesian Rupiah (IDR).</p>
