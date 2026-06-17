@@ -389,11 +389,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   /** Exchange a Firebase ID token for a backend session; returns the user's role. */
-  login: (idToken: string) =>
-    request<LoginResponse>("/auth/login", {
+  login: async (idToken: string): Promise<LoginResponse> => {
+    const res = await request<LoginResponse>("/auth/login", {
       method: "POST",
       body: JSON.stringify({ idToken }),
-    }),
+    });
+    // The backend returns the role lower-cased (e.g. "student"), but the app
+    // compares against canonical upper-case roles ("STUDENT"/"ADMIN") in the
+    // route guards and post-login routing. Normalize here at the boundary so a
+    // casing mismatch can't bounce a freshly signed-in user to /unauthorized.
+    return { ...res, role: res.role.toUpperCase() as Role };
+  },
   logout: () => request<{ message: string }>("/auth/logout", { method: "POST" }),
   /** Current user's profile + progress (requires a session). */
   getMe: () => request<Me>("/me"),

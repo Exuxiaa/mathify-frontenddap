@@ -47,7 +47,10 @@ export function RequireRole({ role, children }: { role: Role; children: ReactNod
       if (!user) { setStatus("no-auth"); return; }
       const stored = getStoredRole();
       if (!stored) { setStatus("no-auth"); return; } // signed in but role unknown → re-login
-      setStatus(stored === role ? "ok" : "wrong-role");
+      // Compare case-insensitively: the backend reports roles lower-cased
+      // ("student"), while the guards declare them upper-cased ("STUDENT"). This
+      // also tolerates any lower-cased value already cached in localStorage.
+      setStatus(stored.toLowerCase() === role.toLowerCase() ? "ok" : "wrong-role");
     });
     return () => unsub();
   }, [role]);
